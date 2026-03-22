@@ -136,7 +136,7 @@ ARRAY['PLA','PETG'],
 ARRAY['Black','Grey'],
 '3 hrs',4.6,70,true,true),
 
-('IKEA Skadis PS5 Controller Holder',
+('IKEA Skadis Pegboard',
 'Controller holder compatible with IKEA Skadis.',
 350,
 'Controller Stands',

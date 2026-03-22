@@ -16,6 +16,11 @@ type ApiProduct = Product & {
 };
 
 function normalizeProduct(product: ApiProduct): Product {
+  const normalizedName =
+    product.name === 'IKEA Skadis PS5 Controller Holder'
+      ? 'IKEA Skadis Pegboard'
+      : product.name;
+
   const categoryName = typeof product.category === 'string' ? product.category : (product.categories?.name || product.category || '');
   const stockQuantity =
     product.stock_quantity ??
@@ -25,6 +30,7 @@ function normalizeProduct(product: ApiProduct): Product {
 
   return {
     ...product,
+    name: normalizedName,
     category: categoryName || '',
     categories: product.categories || (categoryName ? { name: categoryName } : undefined),
     image_url: product.image_url || product.main_image || product.image || product.thumbnail_url,

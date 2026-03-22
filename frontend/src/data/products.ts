@@ -92,7 +92,7 @@ export const products: Product[] = [
   },
   {
     id: '6',
-    name: 'IKEA Skadis PS5 Controller Holder',
+    name: 'IKEA Skadis Pegboard',
     description: 'Controller holder compatible with IKEA Skadis pegboard systems.',
     price: 350,
     category: 'Controller Stands',
