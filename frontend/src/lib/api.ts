@@ -1,4 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001').replace(/\/+$/, '');
+
+function buildApiUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_URL}${normalizedPath}`;
+}
 
 async function getAuthHeader() {
   const token = localStorage.getItem('auth_token');
@@ -23,7 +28,7 @@ async function handleResponse(response: Response) {
 export const api = {
   async get<T = unknown>(path: string): Promise<T> {
     const authHeader = await getAuthHeader();
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(buildApiUrl(path), {
       headers: { ...authHeader }
     });
     return handleResponse(res);
@@ -31,7 +36,7 @@ export const api = {
 
   async post<T = unknown>(path: string, body: unknown): Promise<T> {
     const authHeader = await getAuthHeader();
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(buildApiUrl(path), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -44,7 +49,7 @@ export const api = {
 
   async put<T = unknown>(path: string, body: unknown): Promise<T> {
     const authHeader = await getAuthHeader();
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(buildApiUrl(path), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +62,7 @@ export const api = {
 
   async delete<T = unknown>(path: string): Promise<T> {
     const authHeader = await getAuthHeader();
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(buildApiUrl(path), {
       method: 'DELETE',
       headers: { ...authHeader }
     });
