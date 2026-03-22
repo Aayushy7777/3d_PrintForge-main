@@ -67,7 +67,7 @@ export default function CTASection() {
           >
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm">Free shipping over $50</span>
+              <span className="text-sm">Free shipping over ₹500</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500" />

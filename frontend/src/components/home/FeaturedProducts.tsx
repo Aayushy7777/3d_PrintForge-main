@@ -111,7 +111,10 @@ export default function FeaturedProducts() {
                           </p>
                           <div className="flex items-center justify-between pt-2">
                             <span className="text-xl font-semibold text-foreground">
-                              ${product.price.toFixed(2)}
+                              ₹{Number(product.price || 0).toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </span>
                             <span className="text-sm text-muted-foreground">
                               In Stock
