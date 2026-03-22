@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, ShoppingCart, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { api } from '@/lib/api';
 
 interface Product {
   id: string;
+  slug?: string;
   name: string;
   price: number;
   image: string;
@@ -11,6 +13,7 @@ interface Product {
   category: string;
   rating?: number;
   isFeatured?: boolean;
+  is_featured?: boolean;
 }
 
 const FeaturedCarousel = () => {
@@ -23,10 +26,9 @@ const FeaturedCarousel = () => {
     const fetchFeaturedProducts = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('/api/products?featured=true');
-        if (!response.ok) throw new Error('Failed to fetch products');
-        const data = await response.json();
-        const productsArray = data.products || data.data || (Array.isArray(data) ? data : []);
+        const data = await api.get<unknown>('/api/products?featured=true');
+        const shaped = data as { products?: Product[]; data?: Product[] } | Product[] | null;
+        const productsArray = Array.isArray(shaped) ? shaped : (shaped?.products || shaped?.data || []);
         setProducts(productsArray.slice(0, 8)); // Limit to 8 featured products
         setError(null);
       } catch (err) {
@@ -110,7 +112,7 @@ const FeaturedCarousel = () => {
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
-                      {product.isFeatured && (
+                      {(product.isFeatured || product.is_featured) && (
                         <div className="absolute top-4 right-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
                           Featured
                         </div>
