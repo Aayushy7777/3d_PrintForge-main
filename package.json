@@ -1,0 +1,12 @@
+{
+  "name": "printforge-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build:frontend": "npm --prefix frontend run build",
+    "start:full": "npm run build:frontend && npm --prefix backend run start",
+    "dev:full": "npm run build:frontend && npm --prefix backend run dev",
+    "start:full:server": "npm run build:frontend && npm --prefix server run start",
+    "dev:full:server": "npm run build:frontend && npm --prefix server run dev"
+  }
+}

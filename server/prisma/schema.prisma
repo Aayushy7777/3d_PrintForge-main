@@ -1,0 +1,364 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AUTH & USER MANAGEMENT
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  phone     String?
+  avatar    String?
+  role      Role     @default(CUSTOMER)
+  isActive  Boolean  @default(true)
+
+  // Relations
+  cart      CartItem[]
+  orders    Order[]
+  reviews   Review[]
+  addresses DeliveryAddress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+// ============================================================================
+// PRODUCTS & CATEGORIES
+// ============================================================================
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  icon        String?
+  image       String?
+  isActive    Boolean   @default(true)
+
+  // Relations
+  products    Product[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+model Product {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  slug            String    @unique
+  description     String?
+  price           Decimal   @db.Decimal(10, 2)
+  costPrice       Decimal?  @db.Decimal(10, 2)
+  discountPrice   Decimal?  @db.Decimal(10, 2)
+  discountPercent Int?
+
+  // Media
+  image           String?
+  images          String[]  // Array of image URLs
+
+  // 3D Printing Specifics
+  materials       String[]  // PLA, PETG, NYLON, etc.
+  colors          String[]
+  printTime       Int?      // in minutes
+  weight          Int?      // in grams
+  dimensions      String?   // LxWxH in mm
+  complexity      String?   // Low, Medium, High
+
+  // Inventory
+  inStock         Boolean   @default(true)
+  stockQuantity   Int       @default(0)
+  minOrderQty     Int       @default(1)
+
+  // Status & Visibility
+  isFeatured      Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  isVisible       Boolean   @default(true)
+
+  // Ratings & Reviews
+  rating          Decimal?  @db.Decimal(3, 2)
+  ratingsCount    Int       @default(0)
+
+  // Relations
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+  reviews         Review[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([categoryId])
+  @@index([slug])
+  @@map("products")
+}
+
+// ============================================================================
+// SHOPPING CART
+// ============================================================================
+
+model CartItem {
+  id          String    @id @default(cuid())
+  quantity    Int       @default(1)
+  price       Decimal   @db.Decimal(10, 2)
+  
+  // Customization
+  material    String?
+  color       String?
+  customNote  String?
+
+  // Relations
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+// ============================================================================
+// ORDERS & PAYMENTS
+// ============================================================================
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  status          OrderStatus @default(PENDING)
+  paymentStatus   String      @default("pending")
+  
+  // Pricing
+  subtotal        Decimal     @db.Decimal(10, 2)
+  shippingCost    Decimal     @db.Decimal(10, 2) @default(0)
+  discount        Decimal     @db.Decimal(10, 2) @default(0)
+  tax             Decimal     @db.Decimal(10, 2) @default(0)
+  total           Decimal     @db.Decimal(10, 2)
+
+  // Shipping
+  shippingCarrier String?
+  trackingNumber  String?
+  estimatedDelivery DateTime?
+
+  // Relations
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  deliveryAddressId String
+  deliveryAddress DeliveryAddress @relation(fields: [deliveryAddressId], references: [id])
+
+  items           OrderItem[]
+  payment         Payment?
+
+  notes           String?
+  cancelReason    String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model OrderItem {
+  id          String    @id @default(cuid())
+  quantity    Int
+  price       Decimal   @db.Decimal(10, 2)
+  discount    Decimal   @db.Decimal(10, 2) @default(0)
+  
+  // Customization
+  material    String?
+  color       String?
+  customNote  String?
+
+  // Relations
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ============================================================================
+// PAYMENTS
+// ============================================================================
+
+model Payment {
+  id                String  @id @default(cuid())
+  orderId           String  @unique
+  order             Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  amount            Decimal @db.Decimal(10, 2)
+  currency          String  @default("INR")
+  method            String  @default("razorpay")
+  
+  // Razorpay details
+  razorpayOrderId   String?
+  razorpayPaymentId String? @unique
+  razorpaySignature String?
+  
+  status            String  @default("pending")
+  errorMessage      String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+// ============================================================================
+// DELIVERY & ADDRESSES
+// ============================================================================
+
+model DeliveryAddress {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  fullName    String
+  phone       String
+  email       String?
+  
+  addressLine1 String
+  addressLine2 String?
+  city        String
+  state       String
+  postalCode  String
+  country     String   @default("India")
+  
+  isDefault   Boolean   @default(false)
+  
+  orders      Order[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("delivery_addresses")
+}
+
+// ============================================================================
+// REVIEWS & RATINGS
+// ============================================================================
+
+model Review {
+  id          String      @id @default(cuid())
+  rating      Int         // 1-5 stars
+  title       String?
+  comment     String?
+  isVerified  Boolean     @default(false)
+  helpfulCount Int       @default(0)
+
+  // Relations
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, productId])
+  @@index([productId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model Notification {
+  id          String      @id @default(cuid())
+  type        String      // order_placed, order_shipped, payment_received, etc.
+  subject     String
+  message     String
+  htmlContent String?
+  
+  recipientEmail String
+  recipientName  String?
+  
+  status      String      @default("pending")
+  sentAt      DateTime?
+  readAt      DateTime?
+  errorMessage String?
+
+  // Optional relations
+  orderId     String?
+  userId      String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([status])
+  @@index([recipientEmail])
+  @@map("notifications")
+}
+
+// ============================================================================
+// ADMIN ANALYTICS
+// ============================================================================
+
+model AdminLog {
+  id          String    @id @default(cuid())
+  action      String    // create, update, delete, login, etc.
+  entityType  String    // product, order, user, etc.
+  entityId    String?
+  changes     String?   // JSON serialized changes
+  ipAddress   String?
+  userAgent   String?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([action])
+  @@index([entityType])
+  @@map("admin_logs")
+}
