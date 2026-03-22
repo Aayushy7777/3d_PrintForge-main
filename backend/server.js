@@ -57,13 +57,18 @@ app.use('/api/orders', ordersRoutes);
 // Payments (Razorpay) — requires auth
 app.use('/api/payments', paymentsRoutes);
 
+// ─── Frontend Static (optional, for full-stack local/server deployment) ─────
+const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+
+  // Let client-side routing work for non-API routes.
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
 // ─── Error Handling ───────────────────────────────────────────────────────────
-// Note: Frontend static serving is disabled for Vercel serverless.
-// Deploy frontend separately to Vercel or Netlify.
-// app.use(express.static(frontendDistPath));
-//
-// For local development with frontend, use: npm run dev:full (from root)
-// which builds frontend to backend/dist and starts backend normally.
 
 app.use(notFound);
 app.use(errorHandler);
