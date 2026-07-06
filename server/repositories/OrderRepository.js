@@ -15,8 +15,7 @@ export class OrderRepository {
         },
         payment: true,
         deliveryAddress: true,
-      },
-    });
+      });
   }
 
   static async findById(id) {
@@ -33,8 +32,7 @@ export class OrderRepository {
         },
         payment: true,
         deliveryAddress: true,
-      },
-    });
+      });
   }
 
   static async findByOrderNumber(orderNumber) {
@@ -51,8 +49,7 @@ export class OrderRepository {
         },
         payment: true,
         deliveryAddress: true,
-      },
-    });
+      });
   }
 
   static async getUserOrders(userId, skip = 0, take = 10) {
@@ -72,8 +69,7 @@ export class OrderRepository {
         payment: {
           select: { status: true, amount: true },
         },
-      },
-    });
+      });
   }
 
   static async getAllOrders(skip = 0, take = 10, filters = {}) {
@@ -109,14 +105,20 @@ export class OrderRepository {
         payment: {
           select: { status: true, amount: true },
         },
-      },
-    });
+      });
   }
 
   static async updateOrderStatus(id, status) {
     return prisma.order.update({
       where: { id },
       data: { status },
+    });
+  }
+
+  static async updatePaymentStatus(id, status) {
+    return prisma.order.update({
+      where: { id },
+      data: { paymentStatus: status },
     });
   }
 
@@ -157,7 +159,6 @@ export class OrderRepository {
         payment: {
           select: { status: true, amount: true },
         },
-      },
-    });
+      });
   }
 }

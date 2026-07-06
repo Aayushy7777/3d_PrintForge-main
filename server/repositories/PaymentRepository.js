@@ -1,4 +1,4 @@
-import prisma from '../lib/prisma.js';
+import prisma from "../lib/prisma.js";
 
 export class PaymentRepository {
   static async createPayment(data) {
@@ -22,9 +22,24 @@ export class PaymentRepository {
     });
   }
 
-  static async findByRazorpayId(razorpayPaymentId) {
+  static async findByRazorpayPaymentId(razorpayPaymentId) {
     return prisma.payment.findUnique({
       where: { razorpayPaymentId },
+      include: {
+        order: {
+          include: {
+            user: {
+              select: { id: true, email: true, name: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  static async findByRazorpayOrderId(razorpayOrderId) {
+    return prisma.payment.findFirst({
+      where: { razorpayOrderId },
       include: {
         order: {
           include: {
@@ -40,6 +55,13 @@ export class PaymentRepository {
   static async findByOrderId(orderId) {
     return prisma.payment.findUnique({
       where: { orderId },
+    });
+  }
+
+  static async updatePaymentDetails(id, data) {
+    return prisma.payment.update({
+      where: { id },
+      data,
     });
   }
 
@@ -70,7 +92,7 @@ export class PaymentRepository {
       where,
       skip,
       take,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       include: {
         order: {
           select: {
@@ -87,14 +109,14 @@ export class PaymentRepository {
   static async getPaymentStats() {
     const totalPayments = await prisma.payment.count();
     const successfulPayments = await prisma.payment.count({
-      where: { status: 'SUCCESS' },
+      where: { status: "SUCCESS" },
     });
     const failedPayments = await prisma.payment.count({
-      where: { status: 'FAILED' },
+      where: { status: "FAILED" },
     });
 
     const totalAmount = await prisma.payment.aggregate({
-      where: { status: 'SUCCESS' },
+      where: { status: "SUCCESS" },
       _sum: { amount: true },
     });
 
@@ -113,7 +135,7 @@ export class PaymentRepository {
           gte: new Date(startDate),
           lte: new Date(endDate),
         },
-        status: 'SUCCESS',
+        status: "SUCCESS",
       },
       include: {
         order: {
@@ -129,7 +151,7 @@ export class PaymentRepository {
     return prisma.payment.update({
       where: { id },
       data: {
-        status: 'REFUNDED',
+        status: "REFUNDED",
         refundAmount,
       },
     });

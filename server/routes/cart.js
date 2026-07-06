@@ -1,142 +1,59 @@
 import express from 'express';
-import { supabase } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import prisma from '../lib/prisma.js';
+import { CartRepository } from '../repositories/CartRepository.js';
 
 const router = express.Router();
 
-// Fetch cart items
+// GET /api/cart
 router.get('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-
-    const { data: cart, error: cartError } = await supabase
-      .from('carts')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (cartError) {
-      console.error('Error fetching cart:', cartError);
-      return res.status(500).json({ error: 'Failed to fetch cart' });
-    }
-
-    let cartId = cart?.id;
-    if (!cartId) {
-      // Create cart if not exists
-      const { data: newCart, error: createError } = await supabase
-        .from('carts')
-        .insert([{ user_id: userId, created_at: new Date() }])
-        .select('id')
-        .single();
-      
-      if (createError) {
-        console.error('Error creating cart:', createError);
-        return res.status(500).json({ error: 'Failed to create cart' });
-      }
-      cartId = newCart.id;
-    }
-
-    // Fetch items with product details
-    // Note: joined query requires foreign key setup in Supabase
-    const { data: items, error: itemsError } = await supabase
-      .from('cart_items')
-      .select(`
-        id,
-        quantity,
-        product:product_id (*)
-      `)
-      .eq('cart_id', cartId);
-
-    if (itemsError) {
-      console.error('Error fetching cart items:', itemsError);
-      return res.status(500).json({ error: 'Failed to fetch cart items' });
-    }
-
-    const formattedItems = items.map(item => ({
+    const cartItems = await CartRepository.getCart(userId);
+    // Format to match previous response shape: { cart_items: [{ id, product_id, quantity, product }] }
+    const formatted = cartItems.map(item => ({
       id: item.id,
-      product_id: item.product.id,
+      product_id: item.productId,
       quantity: item.quantity,
-      product: item.product
+      product: item.product,
     }));
-
-    res.json({ cart_items: formattedItems });
-
+    res.json({ cart_items: formatted });
   } catch (err) {
     console.error('Cart GET error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Add item to cart
-router.post('/items', requireAuth, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { product_id, quantity = 1 } = req.body;
-
-    if (!product_id) return res.status(400).json({ error: 'Product ID is required' });
-
-    let { data: cart } = await supabase
-      .from('carts')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!cart) {
-      const { data: newCart, error } = await supabase
-        .from('carts')
-        .insert([{ user_id: userId }])
-        .select('id')
-        .single();
-        
-      if (error) throw error;
-      cart = newCart;
-    }
-
-    // Check if item exists in cart
-    const { data: existingItems } = await supabase
-      .from('cart_items')
-      .select('id, quantity')
-      .eq('cart_id', cart.id)
-      .eq('product_id', product_id);
-    
-    const existingItem = existingItems?.[0];
-
-    if (existingItem) {
-      const newQuantity = existingItem.quantity + quantity;
-      const { error } = await supabase
-        .from('cart_items')
-        .update({ quantity: newQuantity })
-        .eq('id', existingItem.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from('cart_items')
-        .insert([{
-          cart_id: cart.id,
-          product_id: product_id,
-          quantity: quantity
-        }]);
-      if (error) throw error;
-    }
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error('Cart ADD error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Remove item
+// POST /api/cart/items
+router.post('/items', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { product_id, quantity = 1, material = 'PLA', color = null, customNote = null } = req.body;
+    if (!product_id) {
+      return res.status(400).json({ error: 'Product ID is required' });
+    }
+    await CartRepository.addToCart(userId, product_id, quantity, material, color, customNote);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Cart ADD error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/cart/items/:itemId
 router.delete('/items/:itemId', requireAuth, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { itemId } = req.params;
-    const { error } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('id', itemId);
-
-    if (error) throw error;
+    // Ensure ownership
+    const item = await prisma.cartItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, userId: true },
+    });
+    if (!item || item.userId !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    await CartRepository.removeFromCart(itemId);
     res.json({ success: true });
   } catch (err) {
     console.error('Cart DELETE error:', err);
@@ -144,18 +61,28 @@ router.delete('/items/:itemId', requireAuth, async (req, res) => {
   }
 });
 
-// Update item quantity
+// PUT /api/cart/items/:itemId
 router.put('/items/:itemId', requireAuth, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { itemId } = req.params;
     const { quantity } = req.body;
-
-    if (quantity < 1) {
-       await supabase.from('cart_items').delete().eq('id', itemId);
-    } else {
-       await supabase.from('cart_items').update({ quantity }).eq('id', itemId);
+    if (quantity < 0) {
+      return res.status(400).json({ error: 'Quantity must be non-negative' });
     }
-
+    // Ensure ownership
+    const item = await prisma.cartItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, userId: true },
+    });
+    if (!item || item.userId !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (quantity === 0) {
+      await CartRepository.removeFromCart(itemId);
+    } else {
+      await CartRepository.updateCartItemQuantity(itemId, quantity);
+    }
     res.json({ success: true });
   } catch (err) {
     console.error('Cart UPDATE error:', err);

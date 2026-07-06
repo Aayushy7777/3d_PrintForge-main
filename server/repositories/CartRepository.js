@@ -1,13 +1,15 @@
 import prisma from '../lib/prisma.js';
 
 export class CartRepository {
-  static async addToCart(userId, productId, quantity = 1) {
-    const existing = await prisma.cartItem.findUnique({
+  static async addToCart(userId, productId, quantity = 1, material = 'PLA', color = null, customNote = null) {
+    // Validate material (only PLA allowed for now)
+    if (material !== 'PLA') {
+      throw new Error('Only PLA material is allowed');
+    }
+    const existing = await prisma.cartItem.findFirst({
       where: {
-        userId_productId: {
-          userId,
-          productId,
-        },
+        userId,
+        productId,
       },
     });
 
@@ -24,6 +26,9 @@ export class CartRepository {
         userId,
         productId,
         quantity,
+        material,
+        color,
+        customNote,
       },
       include: { product: true },
     });
@@ -75,7 +80,9 @@ export class CartRepository {
   static async getCartTotal(userId) {
     const items = await prisma.cartItem.findMany({
       where: { userId },
-      include: { product: true },
+      include: {
+        product: true,
+      },
     });
 
     const subtotal = items.reduce((sum, item) => {

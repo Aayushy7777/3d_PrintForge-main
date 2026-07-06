@@ -1,130 +1,343 @@
-﻿# Admin Dashboard Guide
+# Admin Dashboard Guide - Order Management
 
 ## Overview
-Provides an administrative interface for managing orders in the PrintForge platform.
+Administrative interface for managing orders in PrintForge. Provides search, filtering, and status update capabilities for order fulfillment.
 
-## Endpoints
+## Database Schema
 
-### GET /api/admin/orders
-**Description**: Retrieves a paginated list of orders with filtering and search capabilities.
-**Headers**:
-- Authorization: Bearer <JWT token> (admin role required)
+### Orders Table (via Prisma)
 
-**Query Parameters**:
-- status (optional): Filter by order status (pending, confirmed, processing, shipped, delivered, cancelled)
-- startDate (optional): Filter orders created after this date (ISO string)
-- endDate (optional): Filter orders created before this date (ISO string)
-- search (optional): Search by customer email (case-insensitive)
-- page (optional, default 1): Page number for pagination
-- limit (optional, default 20): Number of items per page (max 100)
+```prisma
+model Order {
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  status          OrderStatus @default(PENDING)
+  paymentStatus   String   @default("pending")
+  
+  // Pricing
+  subtotal        Decimal   @db.Decimal(10, 2)
+  shippingCost    Decimal   @db.Decimal(10, 2) @default(0)
+  discount        Decimal   @db.Decimal(10, 2) @default(0)
+  tax             Decimal   @db.Decimal(10, 2) @default(0)  // 18% GST
+  totalAmount     Decimal   @db.Decimal(10, 2)
+  
+  // Relations
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  deliveryAddressId String
+  deliveryAddress DeliveryAddress @relation(fields: [deliveryAddressId], references: [id])
+  items           OrderItem[]
+  payment         Payment?
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@map("orders")
+}
 
-**Success Response** (HTTP 200):
-`json
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+```
+
+## Backend Implementation
+
+### Files Created/Modified
+
+1. **`server/routes/admin.js`** (MODIFIED)
+   - Added order management endpoints
+   - Reused existing `requireAdmin` middleware
+
+2. **`server/repositories/OrderRepository.js`** (MODIFIED)
+   - Enhanced `getAllOrders` with filtering, search, pagination
+   - Added any additional helper methods if needed
+
+### API Endpoints (Admin Only)
+
+All endpoints require admin authentication via JWT with admin role.
+
+#### 1. List Orders: `GET /api/admin/orders`
+
+**Query Parameters:**
+- `page` (int, default: 1)
+- `limit` (int, default: 10)
+- `status` (string, optional): Filter by order status
+- `startDate` (ISO string, optional): Filter from date
+- `endDate` (ISO string, optional): Filter to date
+- `search` (string, optional): Search by customer email
+
+**Response (200 OK):**
+```json
 {
-  "orders": [
+  "success": true,
+  "data": [
     {
-      "id": "string",
-      "order_number": "string",
-      "status": "string",
-      "payment_status": "string",
-      "amount": number,
-      "created_at": "string (ISO date)",
+      "id": "order-uuid",
+      "orderNumber": "ORD-123456",
       "user": {
-        "id": "string",
-        "email": "string",
-        "name": "string",
-        "phone": "string"
-      },
-      "delivery_address": {
-        "full_name": "string",
-        "phone": "string",
-        "address_line1": "string",
-        "city": "string",
-        "state": "string",
-        "postal_code": "string",
-        "country": "string"
+        "name": "John Doe",
+        "email": "john@example.com"
       },
       "items": [
         {
-          "id": "string",
-          "product_id": "string",
-          "quantity": number,
-          "price": number,
-          "material": "string",
           "product": {
-            "id": "string",
-            "name": "string",
-            "image": "string"
-          }
+            "name": "Custom PLA Print",
+            "image": "url-to-image"
+          },
+          "quantity": 2,
+          "material": "PLA"
         }
-      ]
+      ],
+      "amount": 1500.00,
+      "paymentStatus": "SUCCESS",
+      "status": "PROCESSING",
+      "createdAt": "2024-03-15T10:30:00Z"
     }
   ],
-  "total": number,          // Total number of orders matching filters
-  "page": number,           // Current page number
-  "limit": number           // Items per page
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 42,
+    "totalPages": 5
+  }
 }
-`
+```
 
-### PATCH /api/admin/orders/:id/status
-**Description**: Updates the status of a specific order.
-**Headers**:
-- Authorization: Bearer <JWT token> (admin role required)
+#### 2. Update Order Status: `PATCH /api/admin/orders/:id/status`
 
-**Request Body**:
-`json
+**Request:**
+```json
 {
-  "status": "string", // One of: pending, confirmed, processing, shipped, delivered, cancelled
-  "tracking_number": "string" // Optional, for shipped/delivered status
+  "status": "SHIPPED"
 }
-`
+```
 
-**Success Response** (HTTP 200):
-`json
+**Valid status values:** PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, REFUNDED
+
+**Response (200 OK):**
+```json
 {
-  "id": "string",
-  "order_number": "string",
-  "status": "string",
-  "payment_status": "string",
-  "amount": number,
-  // ... other order fields
+  "success": true,
+  "message": "Order status updated",
+  "data": {
+    "id": "order-uuid",
+    "status": "SHIPPED",
+    "updatedAt": "2024-03-16T14:20:00Z"
+  }
 }
-`
+```
 
-**Error Responses**:
+**Error Responses:**
 - 400: Invalid status value
-- 403: User is not an admin
 - 404: Order not found
-- 500: Internal server error
+- 403: Forbidden (non-admin user)
+- 500: Server error
 
-## Features
-- View and filter orders by status, date range, and customer email
-- Search orders by customer email
-- Paginated results for large datasets
-- Update order status (with optional tracking number)
-- Detailed order view including customer information, items, and delivery address
+## Admin Authentication
 
-## Security
-- Admin-only access: endpoints are protected by equireAdmin middleware
-- JWT authentication required for all admin endpoints
-- Data validation and sanitization applied to all inputs
+Admin routes reuse the existing authentication system:
+- `requireAuth` middleware validates JWT token
+- `requireAdmin` middleware checks `role === 'admin'` from user record
 
-## Usage Example
-1. Admin navigates to /admin/orders in the dashboard
-2. Dashboard fetches orders via GET /api/admin/orders?page=1&limit=20
-3. Admin can filter by status using dropdown, set date range, or search by email
-4. Clicking on an order row opens a detail modal with full information
-5. To update status, admin selects new status from dropdown and optionally adds tracking number
-6. Dashboard sends PATCH /api/admin/orders/:id/status with the selected status
-7. Upon success, the order list updates to reflect the new status
+## Admin Dashboard Features
 
-## Dependencies
-- Express.js middleware for authentication and authorization
-- Supabase client for database interactions
-- Role-based access control (admin vs customer)
+### Orders Table
 
-## Future Enhancements
-- Bulk actions (e.g., update status for multiple orders)
-- Export orders to CSV/Excel
-- Advanced analytics dashboard
-- Order notes/internal communication
+| Column | Description |
+|--------|-------------|
+| Order ID | Unique identifier (clickable for details) |
+| Order Number | Human-readable order number |
+| Customer | Name and email |
+| Items | Summary of products with quantities |
+| Material | Shows material (always PLA for now) |
+| Amount | Total order value |
+| Payment Status | SUCCESS, FAILED, PENDING |
+| Order Status | Current processing stage |
+| Date | Order creation timestamp |
+| Actions | Status update dropdown |
+
+### Filters & Search
+
+- **Status Filter**: Dropdown to show orders by status
+- **Date Range**: From/To date pickers
+- **Search Box**: Filters by customer email (partial match)
+- **Pagination**: Page size selector (10, 25, 50, 100)
+
+### Order Details View
+
+Clicking on an order opens a modal/drawer with:
+- Complete customer information
+- Itemized list with product details, quantities, material, pricing
+- Payment details (method, transaction ID if applicable)
+- Delivery address
+- Order timeline/status history
+- Status update dropdown (if applicable)
+
+## Implementation Details
+
+### Server-Side
+
+1. **Authorization**
+   - Uses existing `requireAdmin` middleware from `server/middleware/auth.js`
+   - Returns 403 for non-admin users
+
+2. **Data Fetching**
+   - Leverages `OrderRepository.getAllOrders()` with enhanced filtering
+   - Includes relations: user (name, email), items (with product details)
+
+3. **Filtering Logic**
+   - `status`: Exact match on OrderStatus enum
+   - `dateRange`: Filters by `createdAt` between start and end dates
+   - `search`: Case-insensitive partial match on user.email
+
+4. **Pagination**
+   - Calculates offset: `(page - 1) * limit`
+   - Returns total count for pagination UI
+
+5. **Status Updates**
+   - Uses `OrderRepository.updateOrderStatus()` (existing)
+   - Validates against allowed enum values
+
+### Client-Side (Conceptual)
+
+Since the frontend admin dashboard is not yet implemented, this guide outlines the expected components:
+
+#### Components
+1. **AdminLayout** - Base layout with sidebar navigation
+2. **OrdersPage** - Main view with filters and table
+3. **OrderTable** - Tabular display of orders
+4. **OrderDetailModal** - Detailed view of selected order
+5. **StatusSelect** - Dropdown for updating order status
+
+#### Data Flow
+```
+Mount Admin Dashboard
+    ?
+Fetch authenticated user (verify admin role)
+    ?
+Load filters from URL/query params
+    ?
+Request GET /api/admin/orders?filters...
+    ?
+Display loading state
+    ?
+Render table with received data
+    ?
+User interacts with filters/search
+    ?
+Debounce and fetch updated list
+    ?
+User clicks order row
+    ?
+Show modal with order details
+    ?
+User changes status via dropdown
+    ?
+PATCH /api/admin/orders/:id/status
+    ?
+Optimistic UI update
+    ?
+Show success toast
+```
+
+## Security Considerations
+
+1. **Role-Based Access Control**
+   - Only users with `role: 'admin'` can access `/api/admin/*` endpoints
+   - Middleware validates role from user record in database
+
+2. **Data Protection**
+   - Sensitive payment details (like Razorpay IDs) are not exposed in list view
+   - Full payment details available only in order detail view (if needed for support)
+
+3. **Input Validation**
+   - Status transitions validated against allowed values
+   - ID parameters validated as valid UUIDs
+   - Date parameters validated as proper ISO strings
+
+4. **Rate Limiting**
+   - Inherits global rate limiting from Express middleware
+   - Consider stricter limits for admin actions if needed
+
+## Implementation Checklist
+
+- [ ] Admin middleware correctly validates role
+- [ ] GET /api/admin/orders returns paginated results
+- [ ] Filtering by status works correctly
+- [ ] Date range filtering functions properly
+- [ ] Search by email returns partial matches
+- [ ] Pagination controls calculate correct totals
+- [ ] Status update endpoint accepts valid statuses
+- [ ] Invalid status returns 400 with error message
+- [ ] Non-admin users receive 403 Forbidden
+- [ ] Order details load with all related data
+- [ ] Loading states handled appropriately
+- [ ] Error states display user-friendly messages
+- [ ] Successful updates show confirmation feedback
+
+## UI/UX Guidelines
+
+### Visual Design
+- Use existing Admin layout from `/src/pages/admin/`
+- Table rows should be hover-highlighted
+- Status badges: color-coded (pending: yellow, processing: blue, shipped: purple, delivered: green, cancelled: red)
+- Empty state when no orders match filters
+
+### Interaction Patterns
+- Click row to expand/collapse details (or open modal)
+- Immediate feedback on status changes
+- Confirmation dialog for destructive actions (if any added later)
+- Refresh button to reload current filter set
+
+### Accessibility
+- Table navigable via keyboard
+- Sufficient color contrast for status badges
+- Form labels associated with inputs
+- ARIA labels for interactive elements
+
+## Performance Considerations
+
+- Indexes on `status`, `paymentStatus`, `createdAt` for filtering
+- Limit eagerly loaded relations to needed fields
+- Consider database views for complex reporting queries
+- Cache aggregated stats if needed for dashboard widgets
+
+## Testing Scenarios
+
+### Permissions
+- [ ] Non-admin user redirected/blocked from admin routes
+- [ ] Admin user can access all endpoints
+- [ ] Token without role claim treated as non-admin
+
+### Listing
+- [ ] Default page shows first 10 orders sorted by newest
+- [ ] Changing page size updates limit parameter
+- [ ] Navigation between pages works correctly
+- [ ] Total count matches filtered results
+
+### Filtering
+- [ ] Status filter shows only matching orders
+- [ ] Date range excludes outside dates
+- [ ] Search finds partial email matches
+- [ ] Multiple filters combine with AND logic
+
+### Actions
+- [ ] Status update persists to database
+- [ ] UI updates optimistically then syncs
+- [ ] Failed updates show error and revert
+- [ ] Invalid status values rejected
+
+## References
+- React Admin Patterns: https://marmelab.com/react-admin/
+- Data Tables: https://tanstack.com/table/v8
+- Role-Based Access Control: https://en.wikipedia.org/wiki/Role-based_access_control
