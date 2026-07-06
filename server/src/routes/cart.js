@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { normalizeMaterial, MATERIAL_ERROR_MESSAGE } from '../utils/materials.js';
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       .maybeSingle();
 
     if (cartError) return next(new AppError(cartError.message, 500));
-    
+
     // If no cart exists, create one
     if (!cart) {
       const { data: newCart, error: createError } = await supabase
@@ -23,7 +24,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         .insert({ user_id: req.user.id })
         .select()
         .single();
-      
+
       if (createError) return next(new AppError(createError.message, 500));
       return res.json({ ...newCart, cart_items: [] });
     }
@@ -38,6 +39,21 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/items', requireAuth, async (req, res, next) => {
   try {
     const { product_id, quantity = 1 } = req.body;
+
+    if (!product_id) {
+      return next(new AppError('product_id is required', 400));
+    }
+
+    const parsedQuantity = Number(quantity);
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+      return next(new AppError('quantity must be a positive integer', 400));
+    }
+
+    // PLA-only gate (Task 1/2): never trust the client's material value.
+    const material = normalizeMaterial(req.body.material);
+    if (!material) {
+      return next(new AppError(MATERIAL_ERROR_MESSAGE, 400));
+    }
 
     // Get or create cart
     const { data: cart } = await supabase
@@ -56,11 +72,11 @@ router.post('/items', requireAuth, async (req, res, next) => {
       cartId = newCart.id;
     }
 
-    // Upsert cart item
+    // Upsert cart item (material is always the normalized value, i.e. PLA)
     const { data, error } = await supabase
       .from('cart_items')
       .upsert(
-        { cart_id: cartId, product_id, quantity },
+        { cart_id: cartId, product_id, quantity: parsedQuantity, material },
         { onConflict: 'cart_id,product_id' }
       )
       .select()
@@ -86,9 +102,20 @@ router.put('/items/:id', requireAuth, async (req, res, next) => {
       return res.status(204).send();
     }
 
+    const updatePayload = { quantity };
+
+    // If the client tries to change material, apply the same PLA-only rule.
+    if ('material' in req.body) {
+      const material = normalizeMaterial(req.body.material);
+      if (!material) {
+        return next(new AppError(MATERIAL_ERROR_MESSAGE, 400));
+      }
+      updatePayload.material = material;
+    }
+
     const { data, error } = await supabase
       .from('cart_items')
-      .update({ quantity })
+      .update(updatePayload)
       .eq('id', req.params.id)
       .select()
       .single();

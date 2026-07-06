@@ -18,22 +18,17 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: ./frontend
         run: npm ci
 
       - name: Run ESLint
-        working-directory: ./frontend
         run: npm run lint -- --max-warnings 5
 
       - name: Check TypeScript
-        working-directory: ./frontend
         run: npx tsc --noEmit
 
       - name: Build frontend
-        working-directory: ./frontend
         run: npm run build
 
   # Backend checks
@@ -73,8 +68,8 @@ jobs:
       - name: Build frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile.frontend
+          context: .
+          file: ./Dockerfile.frontend
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

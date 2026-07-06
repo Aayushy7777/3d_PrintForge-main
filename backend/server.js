@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
 
 const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
@@ -30,7 +28,7 @@ app.use(cors());
 app.use(express.json()); // Parse incoming JSON request bodies
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
+app.get('/', (req, res) => {
   res.json({
     message: 'PrintForge API is running 🚀',
     auth: 'Supabase Authentication',
@@ -57,32 +55,18 @@ app.use('/api/orders', ordersRoutes);
 // Payments (Razorpay) — requires auth
 app.use('/api/payments', paymentsRoutes);
 
-// ─── Frontend Static (optional, for full-stack local/server deployment) ─────
-const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
-if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath));
-
-  // Let client-side routing work for non-API routes.
-  app.get(/^\/(?!api).*/, (req, res) => {
-    res.sendFile(path.join(frontendDistPath, 'index.html'));
-  });
-}
-
 // ─── Error Handling ───────────────────────────────────────────────────────────
-
 app.use(notFound);
 app.use(errorHandler);
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
-// For local development (not Vercel)
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 5001;
-  app.listen(PORT, () => {
-    console.log(`✅ Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-    console.log(`🔐 Auth: Supabase Auth`);
-    console.log(`🗄️  DB:   Supabase PostgreSQL`);
-  });
-}
+const PORT = process.env.PORT || 5001;
 
-// Export for Vercel serverless (required for production)
+app.listen(PORT, () => {
+  console.log(`✅ Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  console.log(`🔐 Auth: Supabase Auth`);
+  console.log(`🗄️  DB:   Supabase PostgreSQL`);
+});
+
+// Export for Vercel serverless
 module.exports = app;

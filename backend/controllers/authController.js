@@ -38,7 +38,7 @@ const registerUser = async (req, res, next) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        token: generateToken(user.id, user.email),
+        token: generateToken(user.id),
       });
     } else {
       res.status(400);
@@ -74,7 +74,7 @@ const loginUser = async (req, res, next) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        token: generateToken(user.id, user.email),
+        token: generateToken(user.id),
       });
     } else {
       res.status(401);

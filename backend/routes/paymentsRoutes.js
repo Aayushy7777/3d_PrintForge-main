@@ -25,13 +25,11 @@ router.post('/create-order', async (req, res) => {
     const { order_id } = req.body || {};
     if (!order_id) return res.status(400).json({ error: 'order_id is required' });
 
-    const candidateUserIds = [...new Set([req.user.uid, req.user.auth_uid].filter(Boolean))];
-
     const { data: order, error } = await supabase
       .from('orders')
       .select('id, user_id, total_amount, total, currency')
       .eq('id', order_id)
-      .in('user_id', candidateUserIds)
+      .eq('user_id', req.user.uid)
       .single();
 
     if (error || !order) return res.status(404).json({ error: 'Order not found' });
@@ -53,58 +51,6 @@ router.post('/create-order', async (req, res) => {
   }
 });
 
-router.post('/create-link', async (req, res) => {
-  try {
-    if (!rzp) return res.status(503).json({ error: 'Payment service unavailable. Missing Razorpay keys.' });
-    const { order_id } = req.body || {};
-    if (!order_id) return res.status(400).json({ error: 'order_id is required' });
-
-    const candidateUserIds = [...new Set([req.user.uid, req.user.auth_uid].filter(Boolean))];
-
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select('id, user_id, total_amount, total, currency')
-      .eq('id', order_id)
-      .in('user_id', candidateUserIds)
-      .single();
-
-    if (error || !order) return res.status(404).json({ error: 'Order not found' });
-
-    const total = Number(order.total_amount ?? order.total) || 0;
-    const amountPaise = Math.round(total * 100);
-    if (!amountPaise || amountPaise < 100) return res.status(400).json({ error: 'Invalid order amount' });
-
-    const frontendBaseUrl = process.env.FRONTEND_URL || 'http://localhost:5001';
-
-    const paymentLink = await rzp.paymentLink.create({
-      amount: amountPaise,
-      currency: order.currency || 'INR',
-      reference_id: order.id,
-      description: `Payment for order ${order.id}`,
-      callback_url: `${frontendBaseUrl}/order-confirmation?orderId=${order.id}`,
-      callback_method: 'get',
-      notes: {
-        app_order_id: order.id,
-        app_user_id: candidateUserIds[0],
-      },
-      ...(req.user.email
-        ? {
-            customer: {
-              email: req.user.email,
-            },
-          }
-        : {}),
-    });
-
-    return res.json({
-      payment_link: paymentLink.short_url,
-      payment_link_id: paymentLink.id,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' });
-  }
-});
-
 router.post('/verify', async (req, res) => {
   try {
     if (!process.env.RAZORPAY_KEY_SECRET) return res.status(503).json({ error: 'Payment service unavailable' });
@@ -121,10 +67,8 @@ router.post('/verify', async (req, res) => {
 
     if (generated !== razorpay_signature) return res.status(400).json({ error: 'Payment verification failed' });
 
-    const candidateUserIds = [...new Set([req.user.uid, req.user.auth_uid].filter(Boolean))];
-
     const tryUpdate = async (payload) =>
-      supabase.from('orders').update(payload).eq('id', order_id).in('user_id', candidateUserIds);
+      supabase.from('orders').update(payload).eq('id', order_id).eq('user_id', req.user.uid);
 
     let result = await tryUpdate({
       payment_status: 'paid',

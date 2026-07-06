@@ -32,13 +32,21 @@ router.post('/register', async (req, res) => {
     const { data: created, error: createErr } = await supabase
       .from('users')
       .insert({ email, password_hash: hash, name: name ?? null })
-      .select('id,email,name')
+      .select('*')
       .single();
 
     if (createErr) return res.status(400).json({ error: createErr.message });
 
     const token = jwt.sign({ id: created.id, email: created.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: created.id, email: created.email, name: created.name ?? undefined } });
+    res.json({
+      token,
+      user: {
+        id: created.id,
+        email: created.email,
+        name: created.name ?? undefined,
+        role: created.role || 'customer',
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -52,7 +60,7 @@ router.post('/login', async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id,email,name,password_hash')
+      .select('*')
       .eq('email', email)
       .maybeSingle();
 
@@ -63,7 +71,15 @@ router.post('/login', async (req, res) => {
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name ?? undefined } });
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name ?? undefined,
+        role: user.role || 'customer',
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -81,14 +97,19 @@ router.get('/me', async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id,email,name')
+      .select('*')
       .eq('id', decoded.id)
       .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ id: user.id, email: user.email, name: user.name ?? undefined });
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name ?? undefined,
+      role: user.role || 'customer',
+    });
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
   }
