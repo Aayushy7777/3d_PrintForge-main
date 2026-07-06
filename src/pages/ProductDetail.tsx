@@ -60,7 +60,7 @@ export default function ProductDetail() {
 
   const handleAddToCart = async () => {
     try {
-      await addItem(product.id, quantity);
+      await addItem(product.id, quantity, selectedMaterial);
       toast.success(`Added ${quantity} ${product.name} to cart`, {
         icon: '🚀',
         style: {
@@ -171,19 +171,25 @@ export default function ProductDetail() {
                 <div className="space-y-3">
                   <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Material Selection</p>
                   <div className="flex flex-wrap gap-2">
-                    {['PLA', 'PETG', 'ABS', 'Resin'].map((material) => (
+                    {['PLA', 'PETG', 'ABS', 'Resin'].map((material) => {
+                      const isAvailable = material === 'PLA';
+                      return (
                       <button
                         key={material}
-                        onClick={() => setSelectedMaterial(material)}
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => setSelectedMaterial('PLA')}
+                        title={isAvailable ? 'PLA is selected' : `${material} is coming soon`}
                         className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
                           selectedMaterial === material
                             ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
-                            : "bg-secondary/50 text-muted-foreground border-transparent hover:border-primary/20"
-                        }`}
+                            : "bg-secondary/50 text-muted-foreground border-transparent"
+                        } ${!isAvailable ? "opacity-40 cursor-not-allowed" : "hover:border-primary/20"}`}
                       >
-                        {material}
+                        {material}{!isAvailable ? ' (Soon)' : ''}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

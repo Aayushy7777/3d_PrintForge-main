@@ -1,50 +1,149 @@
 import express from 'express';
 import crypto from 'crypto';
-import razorpay from 'razorpay';
+import Razorpay from 'razorpay';
 import { supabase } from '../config/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth } from '../../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { sendOrderConfirmationEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
 let rzp;
 try {
   if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    rzp = new razorpay({
+    rzp = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
   } else {
-    console.warn('⚠️ Razorpay credentials missing. Payment features will be disabled.');
+    console.warn('Razorpay credentials missing. Payment features are disabled.');
   }
 } catch (error) {
-  console.error('❌ Failed to initialize Razorpay:', error.message);
+  console.error('Failed to initialize Razorpay:', error.message);
+}
+
+export function verifyRazorpaySignature(
+  { razorpay_order_id, razorpay_payment_id, razorpay_signature },
+  secret
+) {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !secret) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest('hex');
+
+  const received = String(razorpay_signature);
+  if (received.length !== expectedSignature.length) return false;
+
+  return crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(received));
+}
+
+export function buildRazorpayOrderOptions(order, orderId) {
+  const amount = Number(order.total_amount ?? order.total ?? order.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AppError('Order amount is invalid', 400);
+  }
+
+  return {
+    amount: Math.round(amount * 100),
+    currency: order.currency || 'INR',
+    receipt: `receipt_${orderId}`.slice(0, 40),
+  };
+}
+
+async function findUserOrder(orderId, userId) {
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw new AppError(error.message, 500);
+  return order;
+}
+
+async function fetchOrderDetails(orderId, order = null) {
+  const [itemsResult, addressResult, userResult] = await Promise.all([
+    supabase.from('order_items').select('*').eq('order_id', orderId),
+    order?.delivery_address_id
+      ? supabase.from('delivery_addresses').select('*').eq('id', order.delivery_address_id).maybeSingle()
+      : Promise.resolve({ data: order?.delivery_address || null, error: null }),
+    order?.user_id
+      ? supabase.from('users').select('id, email, name, phone').eq('id', order.user_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (itemsResult.error) throw new AppError(itemsResult.error.message, 500);
+  if (addressResult.error) throw new AppError(addressResult.error.message, 500);
+  if (userResult.error) throw new AppError(userResult.error.message, 500);
+
+  return {
+    items: itemsResult.data || [],
+    address: addressResult.data || order?.delivery_address || null,
+    user: userResult.data || null,
+  };
+}
+
+async function savePaymentRecord(order, paymentData) {
+  const payload = {
+    order_id: order.id,
+    amount: Number(order.total_amount ?? order.total ?? 0),
+    currency: order.currency || 'INR',
+    method: 'razorpay',
+    razorpay_order_id: paymentData.razorpay_order_id,
+    razorpay_payment_id: paymentData.razorpay_payment_id || null,
+    razorpay_signature: paymentData.razorpay_signature || null,
+    status: paymentData.status,
+    error_message: paymentData.error_message || null,
+  };
+
+  const { error } = await supabase
+    .from('payments')
+    .upsert(payload, { onConflict: 'order_id' });
+
+  if (error) {
+    console.warn('Payment record was not persisted:', error.message);
+  }
+}
+
+async function clearUserCart(userId) {
+  const { data: cart, error } = await supabase
+    .from('carts')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error || !cart?.id) return;
+  await supabase.from('cart_items').delete().eq('cart_id', cart.id);
 }
 
 // POST /api/payments/create-order
 router.post('/create-order', requireAuth, async (req, res, next) => {
   try {
     if (!rzp) return next(new AppError('Payment service unavailable', 503));
-    
-    const { order_id } = req.body;
 
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select('total_amount, currency')
-      .eq('id', order_id)
-      .eq('user_id', req.user.id)
-      .single();
+    const orderId = req.body.orderId || req.body.order_id;
+    if (!orderId) return next(new AppError('orderId is required', 400));
 
-    if (error || !order) return next(new AppError('Order not found', 404));
+    const order = await findUserOrder(orderId, req.user.id);
+    if (!order) return next(new AppError('Order not found', 404));
 
-    const options = {
-      amount: Math.round(order.total_amount * 100),
-      currency: order.currency || 'INR',
-      receipt: `receipt_${order_id}`,
-    };
+    const rzpOrder = await rzp.orders.create(buildRazorpayOrderOptions(order, orderId));
 
-    const rzpOrder = await rzp.orders.create(options);
-    res.json({ order: rzpOrder, key: process.env.RAZORPAY_KEY_ID });
+    await savePaymentRecord(order, {
+      razorpay_order_id: rzpOrder.id,
+      status: 'pending',
+    });
+
+    res.json({
+      order: rzpOrder,
+      key: process.env.RAZORPAY_KEY_ID,
+      key_id: process.env.RAZORPAY_KEY_ID,
+    });
   } catch (error) {
     next(error);
   }
@@ -53,31 +152,75 @@ router.post('/create-order', requireAuth, async (req, res, next) => {
 // POST /api/payments/verify
 router.post('/verify', requireAuth, async (req, res, next) => {
   try {
-    if (!rzp) return next(new AppError('Payment service unavailable', 503));
+    const orderId = req.body.orderId || req.body.order_id;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, order_id } = req.body;
+    if (!orderId) return next(new AppError('orderId is required', 400));
 
-    const generated_signature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(razorpay_order_id + "|" + razorpay_payment_id)
-      .digest('hex');
+    const order = await findUserOrder(orderId, req.user.id);
+    if (!order) return next(new AppError('Order not found', 404));
 
-    if (generated_signature === razorpay_signature) {
-      const { error } = await supabase
+    const valid = verifyRazorpaySignature(
+      { razorpay_order_id, razorpay_payment_id, razorpay_signature },
+      process.env.RAZORPAY_KEY_SECRET
+    );
+
+    if (!valid) {
+      await supabase
         .from('orders')
-        .update({ 
-          payment_status: 'paid', 
-          status: 'confirmed',
-          payment_id: razorpay_payment_id
+        .update({
+          payment_status: 'failed',
+          status: 'pending',
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', order_id);
+        .eq('id', orderId);
 
-      if (error) return next(new AppError(error.message, 500));
+      await savePaymentRecord(order, {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        status: 'failed',
+        error_message: 'Invalid Razorpay signature',
+      });
 
-      res.json({ message: 'Payment verified successfully' });
-    } else {
       return next(new AppError('Payment verification failed', 400));
     }
+
+    const { data: updatedOrder, error } = await supabase
+      .from('orders')
+      .update({
+        payment_status: 'paid',
+        status: 'confirmed',
+        payment_id: razorpay_payment_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (error) return next(new AppError(error.message, 500));
+
+    const finalOrder = updatedOrder || order;
+    await savePaymentRecord(finalOrder, {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      status: 'paid',
+    });
+
+    await clearUserCart(req.user.id);
+
+    fetchOrderDetails(orderId, finalOrder)
+      .then(({ items, address, user }) => {
+        const email = address?.email || user?.email || req.user.email;
+        if (!email) return null;
+        return sendOrderConfirmationEmail(email, finalOrder, items, address);
+      })
+      .catch((mailError) => {
+        console.error('Order confirmation email failed:', mailError.message);
+      });
+
+    res.json({ message: 'Payment verified successfully', order: finalOrder });
   } catch (error) {
     next(error);
   }

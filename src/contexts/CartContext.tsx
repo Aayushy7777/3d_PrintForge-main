@@ -8,12 +8,13 @@ export interface CartItem {
   id: string;
   product_id: string;
   quantity: number;
+  material?: string;
   product?: Product;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (productId: string, quantity?: number) => Promise<void>;
+  addItem: (productId: string, quantity?: number, material?: string) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
   clearLocalCart: () => void;
@@ -66,7 +67,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addItem = async (productId: string, quantity: number = 1) => {
+  const addItem = async (productId: string, quantity: number = 1, material: string = 'PLA') => {
     if (!user) {
       // For now, only authenticated users can use the cart in this production version
       // In a real app, you'd sync local cart with DB on login
@@ -75,7 +76,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      await api.post('/api/cart/items', { product_id: productId, quantity });
+      await api.post('/api/cart/items', { product_id: productId, quantity, material });
       await fetchCart();
     } catch (error) {
       console.error('Error adding item:', error);
@@ -95,7 +96,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const updateQuantity = async (itemId: string, quantity: number) => {
     try {
-      await api.put(`/api/cart/items/${itemId}`, { quantity });
+      await api.put(`/api/cart/items/${itemId}`, { quantity, material: 'PLA' });
       if (quantity < 1) {
         setItems(prev => prev.filter(i => i.id !== itemId));
       } else {

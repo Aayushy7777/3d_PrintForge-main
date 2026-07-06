@@ -149,10 +149,13 @@ router.post('/', requireAuth, async (req, res, next) => {
       await supabase.rpc('decrement_stock', { p_id: item.product_id, qty: item.quantity });
     }
 
-    // 8. Clear cart
-    const { data: cart } = await supabase.from('carts').select('id').eq('user_id', req.user.id).single();
-    if (cart) {
-      await supabase.from('cart_items').delete().eq('cart_id', cart.id);
+    // 8. Clear cart. Online orders clear only after Razorpay verification so
+    // customers can retry payment without losing the cart state.
+    if (payment_method !== 'online') {
+      const { data: cart } = await supabase.from('carts').select('id').eq('user_id', req.user.id).single();
+      if (cart) {
+        await supabase.from('cart_items').delete().eq('cart_id', cart.id);
+      }
     }
 
     res.status(201).json({ order });

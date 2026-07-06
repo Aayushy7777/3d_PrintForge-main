@@ -35,8 +35,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/cart/items
-router.post('/items', requireAuth, async (req, res, next) => {
+async function addCartItem(req, res, next) {
   try {
     const { product_id, quantity = 1 } = req.body;
 
@@ -87,7 +86,11 @@ router.post('/items', requireAuth, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+}
+
+// POST /api/cart and POST /api/cart/items
+router.post('/', requireAuth, addCartItem);
+router.post('/items', requireAuth, addCartItem);
 
 // PUT /api/cart/items/:id
 router.put('/items/:id', requireAuth, async (req, res, next) => {

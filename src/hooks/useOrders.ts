@@ -31,7 +31,7 @@ export function useAdminOrders(options: Record<string, string> = {}) {
     queryKey: ['admin-orders', options],
     queryFn: async () => {
       const query = new URLSearchParams(options).toString();
-      const data = await api.get(`/api/admin/orders?${query}`);
+      const data = await api.get(`/api/admin/orders${query ? `?${query}` : ''}`);
       return {
         orders: (data.orders || []) as Order[],
         total: (data.total || 0) as number,
@@ -45,7 +45,7 @@ export function useUpdateOrderStatus() {
 
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      return await api.put(`/api/admin/orders/${id}/status`, { status });
+      return await api.patch(`/api/admin/orders/${id}/status`, { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });

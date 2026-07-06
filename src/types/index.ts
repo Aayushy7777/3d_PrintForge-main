@@ -42,10 +42,13 @@ export interface Address {
   id: string;
   user_id: string;
   full_name: string;
-  phone_number: string;
+  phone_number?: string;
+  phone?: string;
   email?: string;
-  house_number: string;
-  street: string;
+  house_number?: string;
+  address_line1?: string;
+  address_line2?: string;
+  street?: string;
   city: string;
   state: string;
   postal_code: string;
@@ -60,19 +63,22 @@ export interface OrderItem {
   order_id: string;
   product_id: string;
   quantity: number;
-  price_at_time: number;
+  price_at_time?: number;
+  total_price?: number;
   product?: Product;
   product_name?: string;
   product_image?: string;
   unit_price?: number;
+  material?: string;
 }
 
 export interface Order {
   id: string;
   order_number?: string;
   user_id: string;
-  profiles?: { full_name?: string };
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  user?: { id?: string; email?: string; name?: string; phone?: string };
+  profiles?: { full_name?: string; email?: string };
+  status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   payment_status?: string;
   total_amount: number;
   subtotal?: number;

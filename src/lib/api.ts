@@ -55,6 +55,19 @@ export const api = {
     return handleResponse(res);
   },
 
+  async patch<T = unknown>(path: string, body: unknown): Promise<T> {
+    const authHeader = await getAuthHeader();
+    const res = await fetch(`${API_URL}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader
+      },
+      body: JSON.stringify(body)
+    });
+    return handleResponse(res);
+  },
+
   async delete<T = unknown>(path: string): Promise<T> {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${path}`, {

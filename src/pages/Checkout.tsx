@@ -11,6 +11,7 @@ import { CartSummary } from "@/components/cart/CartSummary";
 import { Button } from "@/components/ui/button";
 import { toast } from "react-hot-toast";
 import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
+import { Address } from "@/types";
 
 const STEPS = ["Address", "Payment", "Review"];
 
@@ -29,6 +30,7 @@ export default function Checkout() {
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (items.length === 0 && !isProcessing) {
@@ -48,7 +50,40 @@ export default function Checkout() {
     setCurrentStep((prev) => prev - 1);
   };
 
-  const initRazorpay = (rzpOrder: { amount: number; currency: string; id: string }, key: string, orderId: string) => {
+  const loadRazorpayScript = () =>
+    new Promise<boolean>((resolve) => {
+      if (window.Razorpay) return resolve(true);
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const getSelectedAddress = async () => {
+    if (!selectedAddressId) return null;
+    try {
+      const addresses = await api.get<Address[]>('/api/users/addresses');
+      return addresses.find((address) => address.id === selectedAddressId) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const initRazorpay = async (
+    rzpOrder: { amount: number; currency: string; id: string },
+    key: string,
+    orderId: string
+  ) => {
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      toast.error("Could not load Razorpay. Please try again.");
+      setPendingOrderId(orderId);
+      return;
+    }
+
+    const address = await getSelectedAddress();
     const options = {
       key,
       amount: rzpOrder.amount,
@@ -60,24 +95,42 @@ export default function Checkout() {
         try {
           await api.post('/api/payments/verify', {
             ...response,
-            order_id: orderId
+            orderId
           });
           toast.success("Payment successful!");
           clearLocalCart();
           navigate(`/order-confirmation?orderId=${orderId}`);
         } catch (error) {
-          toast.error("Payment verification failed");
+          setPendingOrderId(orderId);
+          toast.error(error instanceof Error ? error.message : "Payment verification failed");
         }
       },
       prefill: {
-        name: user?.user_metadata?.full_name,
-        email: user?.email,
+        name: address?.full_name || user?.name || "",
+        email: address?.email || user?.email || "",
+        contact: address?.phone_number || "",
+      },
+      modal: {
+        ondismiss: () => {
+          setPendingOrderId(orderId);
+          toast.error("Payment was not completed. You can retry from this page.");
+        },
       },
       theme: { color: "#000000" },
     };
 
     const rzp = new window.Razorpay(options);
     rzp.open();
+  };
+
+  const startPaymentForOrder = async (orderId: string) => {
+    const { order: rzpOrder, key, key_id } = await api.post<{
+      order: { amount: number; currency: string; id: string };
+      key?: string;
+      key_id?: string;
+    }>('/api/payments/create-order', { orderId });
+
+    await initRazorpay(rzpOrder, key || key_id || "", orderId);
   };
 
   const handlePlaceOrder = async () => {
@@ -91,11 +144,8 @@ export default function Checkout() {
       });
 
       if (paymentMethod === 'online') {
-        // 2. Create Razorpay order
-        const { order: rzpOrder, key } = await api.post<{ order: { amount: number; currency: string; id: string; }; key: string }>('/api/payments/create-order', {
-          order_id: order.id
-        });
-        initRazorpay(rzpOrder, key, order.id);
+        setPendingOrderId(order.id);
+        await startPaymentForOrder(order.id);
       } else {
         // Cash on delivery
         toast.success("Order placed successfully!");
@@ -104,6 +154,18 @@ export default function Checkout() {
       }
     } catch (error: unknown) {
       toast.error((error as Error).message || "Failed to place order");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRetryPayment = async () => {
+    if (!pendingOrderId) return;
+    setIsProcessing(true);
+    try {
+      await startPaymentForOrder(pendingOrderId);
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to restart payment");
     } finally {
       setIsProcessing(false);
     }
@@ -158,6 +220,14 @@ export default function Checkout() {
                     <ShieldCheck className="h-5 w-5 text-primary mr-3" />
                     <p className="text-sm">Your order is protected by our buyer protection policy.</p>
                   </div>
+                  {pendingOrderId && (
+                    <div className="mt-4 p-4 bg-amber-500/10 rounded-lg border border-amber-500/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <p className="text-sm">Payment is pending for this order. Retry Razorpay when you are ready.</p>
+                      <Button variant="outline" onClick={handleRetryPayment} disabled={isProcessing}>
+                        Retry Payment
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

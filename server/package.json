@@ -8,7 +8,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seed.js",
-    "test": "node test-integration.js"
+    "test": "node test-payment-admin.js",
+    "test:integration": "node test-integration.js"
   },
   "dependencies": {
     "@prisma/client": "^5.7.0",

@@ -16,7 +16,11 @@ export default function AdminOrders() {
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
 
-  const { data, isLoading: loading } = useAdminOrders(status !== "all" ? { status } : {});
+  const filters: Record<string, string> = {};
+  if (status !== "all") filters.status = status;
+  if (search.trim()) filters.search = search.trim();
+
+  const { data, isLoading: loading } = useAdminOrders(filters);
   const orders = data?.orders || [];
 
   return (
