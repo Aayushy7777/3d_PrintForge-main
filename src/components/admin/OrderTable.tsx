@@ -33,8 +33,9 @@ interface OrderTableProps {
 
 const statuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
 
-function formatAmount(value?: number) {
-  return `INR ${Number(value || 0).toLocaleString("en-IN")}`;
+function formatAmount(value?: number, currency = "INR") {
+  const symbol = currency === "USD" ? "$" : "₹";
+  return `${symbol}${Number(value || 0).toLocaleString("en-IN")}`;
 }
 
 function getStatusBadge(status?: string) {
@@ -52,6 +53,13 @@ function getStatusBadge(status?: string) {
     default:
       return <Badge variant="secondary">Pending</Badge>;
   }
+}
+
+function getPaymentBadge(status?: string) {
+  if (status === "paid") return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Paid</Badge>;
+  if (status === "cod") return <Badge variant="secondary">COD</Badge>;
+  if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
+  return <Badge variant="outline">Unpaid</Badge>;
 }
 
 function getCustomer(order: Order) {
@@ -72,6 +80,26 @@ function getMaterials(order: Order) {
   return [...materials].join(", ") || "PLA";
 }
 
+function Field({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
+      <p className={`text-sm ${mono ? "font-mono text-xs break-all" : ""}`}>{value ?? "—"}</p>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2 border-b bg-muted/30">
+        {title}
+      </p>
+      <div className="p-4 grid gap-3 md:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
 export function OrderTable({ orders }: OrderTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const updateStatus = useUpdateOrderStatus();
@@ -83,6 +111,8 @@ export function OrderTable({ orders }: OrderTableProps) {
       </div>
     );
   }
+
+  const addr = selectedOrder?.delivery_address;
 
   return (
     <>
@@ -110,8 +140,8 @@ export function OrderTable({ orders }: OrderTableProps) {
                 <TableCell>{getCustomer(order)}</TableCell>
                 <TableCell className="max-w-56 truncate">{getItemsLabel(order)}</TableCell>
                 <TableCell>{getMaterials(order)}</TableCell>
-                <TableCell className="font-semibold">{formatAmount(order.total_amount)}</TableCell>
-                <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
+                <TableCell className="font-semibold">{formatAmount(order.total_amount, order.currency)}</TableCell>
+                <TableCell>{getPaymentBadge(order.payment_status)}</TableCell>
                 <TableCell>
                   <Select
                     value={order.status}
@@ -144,60 +174,96 @@ export function OrderTable({ orders }: OrderTableProps) {
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Order #{selectedOrder?.order_number || selectedOrder?.id.slice(0, 8)}</DialogTitle>
+            <DialogTitle>
+              Order #{selectedOrder?.order_number || selectedOrder?.id.slice(0, 8)}
+            </DialogTitle>
           </DialogHeader>
 
           {selectedOrder && (
-            <div className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-4 text-sm">
+            <div className="space-y-5">
+              {/* Status / payment / total snapshot */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="rounded-lg border p-4">
-                  <p className="font-semibold mb-2">Customer</p>
-                  <p>{selectedOrder.user?.name || selectedOrder.profiles?.full_name || "Customer"}</p>
-                  <p className="text-muted-foreground">{getCustomer(selectedOrder)}</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Order Status</p>
+                  {getStatusBadge(selectedOrder.status)}
                 </div>
                 <div className="rounded-lg border p-4">
-                  <p className="font-semibold mb-2">Delivery Address</p>
-                  <p>{selectedOrder.delivery_address?.full_name}</p>
-                  <p className="text-muted-foreground">
-                    {[
-                      selectedOrder.delivery_address?.house_number,
-                      selectedOrder.delivery_address?.address_line1,
-                      selectedOrder.delivery_address?.street,
-                    ].filter(Boolean).join(" ")}
-                  </p>
-                  <p className="text-muted-foreground">
-                    {[
-                      selectedOrder.delivery_address?.city,
-                      selectedOrder.delivery_address?.state,
-                      selectedOrder.delivery_address?.postal_code,
-                    ].filter(Boolean).join(", ")}
-                  </p>
-                  <p className="text-muted-foreground">
-                    {selectedOrder.delivery_address?.phone_number || selectedOrder.delivery_address?.phone}
-                  </p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Payment</p>
+                  {getPaymentBadge(selectedOrder.payment_status)}
+                </div>
+                <div className="rounded-lg border p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Method</p>
+                  <p className="text-sm capitalize">{selectedOrder.payment_method || "—"}</p>
+                </div>
+                <div className="rounded-lg border p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Total</p>
+                  <p className="text-lg font-bold">{formatAmount(selectedOrder.total_amount, selectedOrder.currency)}</p>
                 </div>
               </div>
 
+              <Section title="Order Details">
+                <Field label="Order ID" value={selectedOrder.id} mono />
+                <Field label="User ID" value={selectedOrder.user_id} mono />
+                <Field label="Currency" value={selectedOrder.currency || "INR"} />
+                <Field label="Delivery Address ID" value={selectedOrder.delivery_address_id} mono />
+                <Field label="Created At" value={format(new Date(selectedOrder.created_at), "PPpp")} />
+                <Field label="Updated At" value={selectedOrder.updated_at ? format(new Date(selectedOrder.updated_at), "PPpp") : undefined} />
+              </Section>
+
+              <Section title="Customer">
+                <Field label="Name" value={selectedOrder.user?.name || selectedOrder.profiles?.full_name} />
+                <Field label="Email" value={getCustomer(selectedOrder)} />
+              </Section>
+
+              <Section title="Payment">
+                <Field label="Payment Status" value={selectedOrder.payment_status} />
+                <Field label="Payment Method" value={selectedOrder.payment_method} />
+                <Field label="Payment ID" value={selectedOrder.payment_id} mono />
+                <Field label="Razorpay Order ID" value={selectedOrder.razorpay_order_id} mono />
+              </Section>
+
+              <Section title="Delivery Address">
+                <Field label="Full Name" value={addr?.full_name} />
+                <Field label="Phone" value={addr?.phone_number || addr?.phone} />
+                <Field label="Email" value={addr?.email} />
+                <Field label="House / Apt" value={addr?.house_number} />
+                <Field label="Street / Area" value={addr?.street || addr?.address_line1} />
+                <Field label="City" value={addr?.city} />
+                <Field label="State" value={addr?.state} />
+                <Field label="Postal Code" value={addr?.postal_code} />
+                <Field label="Country" value={addr?.country} />
+                <Field label="Delivery Instructions" value={addr?.delivery_instructions} />
+              </Section>
+
               <div className="rounded-lg border overflow-hidden">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2 border-b bg-muted/30">
+                  Items ({selectedOrder.items?.length || 0})
+                </p>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item</TableHead>
+                      <TableHead>Product ID</TableHead>
                       <TableHead>Qty</TableHead>
-                      <TableHead>Material</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(selectedOrder.items || []).map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.product_name || item.product?.name || item.product_id}</TableCell>
+                    {(selectedOrder.items || []).map((item, idx) => (
+                      <TableRow key={item.id || idx}>
+                        <TableCell className="font-medium">
+                          {item.product_name || item.product?.name || item.product_id}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{item.product_id}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
-                        <TableCell>{item.material || "PLA"}</TableCell>
                         <TableCell className="text-right">
-                          {formatAmount(item.total_price || item.unit_price || item.price_at_time)}
+                          {formatAmount(item.unit_price ?? item.price_at_time, selectedOrder.currency)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatAmount((item.unit_price ?? item.price_at_time ?? 0) * (item.quantity || 1), selectedOrder.currency)}
                         </TableCell>
                       </TableRow>
                     ))}

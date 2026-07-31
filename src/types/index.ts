@@ -80,6 +80,10 @@ export interface Order {
   profiles?: { full_name?: string; email?: string };
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   payment_status?: string;
+  payment_method?: string;
+  payment_id?: string;
+  razorpay_order_id?: string;
+  currency?: string;
   total_amount: number;
   subtotal?: number;
   shipping_amount?: number;
@@ -88,6 +92,7 @@ export interface Order {
   shipping_address_id?: string;
   shipping_address?: Address;
   delivery_address?: Address;
+  delivery_address_id?: string;
   items?: OrderItem[];
   created_at: string;
   updated_at?: string;
