@@ -27,6 +27,7 @@ import { AdminLayout } from "./components/admin/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import AdminProducts from "./pages/admin/Products";
 import AdminOrders from "./pages/admin/Orders";
+import AdminCustomers from "./pages/admin/Customers";
 
 // Guards
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
@@ -65,7 +66,7 @@ const App = () => (
                   <Route index element={<Dashboard />} />
                   <Route path="products" element={<AdminProducts />} />
                   <Route path="orders" element={<AdminOrders />} />
-                  <Route path="users" element={<div>Users (Coming Soon)</div>} />
+                  <Route path="users" element={<AdminCustomers />} />
                   <Route path="settings" element={<div>Settings (Coming Soon)</div>} />
                 </Route>
 

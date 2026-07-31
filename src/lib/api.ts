@@ -75,6 +75,18 @@ export const api = {
       headers: { ...authHeader }
     });
     return handleResponse(res);
+  },
+
+  // File upload. Deliberately does NOT set a Content-Type header so the browser
+  // can attach the correct multipart/form-data boundary itself.
+  async upload<T = unknown>(path: string, formData: FormData): Promise<T> {
+    const authHeader = await getAuthHeader();
+    const res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { ...authHeader },
+      body: formData
+    });
+    return handleResponse(res);
   }
 };
 

@@ -1,4 +1,7 @@
 import express from 'express';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import multer from 'multer';
 import { supabase } from '../config/supabase.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -6,6 +9,28 @@ import { AppError } from '../middleware/errorHandler.js';
 const router = express.Router();
 
 const VALID_ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+
+// In-memory upload handling for product images (5MB max, images only).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new AppError('Only image files are allowed', 400));
+    }
+    cb(null, true);
+  },
+});
+
+// Translate multer errors (e.g. file too large) into a clean 400 JSON response.
+function handleUploadError(err, req, res, next) {
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === 'LIMIT_FILE_SIZE' ? 'Image is too large. Maximum size is 5MB.' : err.message;
+    return res.status(400).json({ error: message });
+  }
+  next(err);
+}
 
 router.use(requireAdmin);
 
@@ -136,6 +161,106 @@ router.delete('/products/:id', async (req, res, next) => {
     const { error } = await supabase.from('products').delete().eq('id', req.params.id);
     if (error) return next(new AppError(error.message, 400));
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/categories
+router.get('/categories', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('id, name')
+      .order('name', { ascending: true });
+    if (error) return next(new AppError(error.message, 500));
+    res.json(data || []);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/products/upload-image
+// Multipart/form-data, field name "image". Uploads to the Supabase
+// Storage "images" bucket at `products/{unique}-{filename}` and returns the public URL.
+router.post(
+  '/products/upload-image',
+  upload.single('image'),
+  handleUploadError,
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return next(
+          new AppError('No image uploaded. Use a multipart/form-data field named "image"', 400)
+        );
+      }
+
+      const ext = path.extname(req.file.originalname);
+      const baseName =
+        path
+          .basename(req.file.originalname, ext)
+          .replace(/[^a-zA-Z0-9_-]+/g, '-')
+          .slice(0, 60) || 'image';
+      const filePath = `products/${crypto.randomUUID()}-${baseName}${ext}`;
+
+      const { error } = await supabase.storage
+        .from('images')
+        .upload(filePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (error) return next(new AppError(error.message, 500));
+
+      const { data } = supabase.storage.from('images').getPublicUrl(filePath);
+      res.status(201).json({ url: data.publicUrl });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /api/admin/users
+// Aggregates order_count and lifetime_spend per user (lifetime_spend = sum of
+// total_amount where status === 'delivered' OR payment_status === 'paid').
+router.get('/users', async (req, res, next) => {
+  try {
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, name, email, created_at');
+    if (usersError) return next(new AppError(usersError.message, 500));
+
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('user_id, total_amount, status, payment_status');
+    if (ordersError) return next(new AppError(ordersError.message, 500));
+
+    const orderCounts = new Map();
+    const lifetimeSpend = new Map();
+
+    for (const order of orders || []) {
+      if (!order.user_id) continue;
+      orderCounts.set(order.user_id, (orderCounts.get(order.user_id) || 0) + 1);
+      if (order.status === 'delivered' || order.payment_status === 'paid') {
+        lifetimeSpend.set(
+          order.user_id,
+          (lifetimeSpend.get(order.user_id) || 0) + Number(order.total_amount || 0)
+        );
+      }
+    }
+
+    const customers = (users || []).map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      created_at: user.created_at,
+      order_count: orderCounts.get(user.id) || 0,
+      lifetime_spend: lifetimeSpend.get(user.id) || 0,
+    }));
+
+    customers.sort((a, b) => b.lifetime_spend - a.lifetime_spend);
+
+    res.json(customers);
   } catch (error) {
     next(error);
   }

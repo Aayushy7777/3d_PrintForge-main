@@ -91,6 +91,11 @@ export function useProduct(slug: string) {
   });
 }
 
+export interface AdminCategory {
+  id: string;
+  name: string;
+}
+
 export function useAdminProducts() {
   return useQuery({
     queryKey: ['admin-products'],
@@ -98,6 +103,18 @@ export function useAdminProducts() {
       const data = await api.get('/api/admin/products');
       return normalizeProducts((data || []) as ApiProduct[]);
     },
+  });
+}
+
+export function useAdminCategories() {
+  return useQuery({
+    queryKey: ['admin-categories'],
+    queryFn: async () => {
+      const data = await api.get('/api/admin/categories');
+      return (data || []) as AdminCategory[];
+    },
+    // Categories change rarely — keep them fresh for a while.
+    staleTime: 5 * 60 * 1000,
   });
 }
 

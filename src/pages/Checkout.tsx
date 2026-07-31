@@ -95,7 +95,7 @@ export default function Checkout() {
         try {
           await api.post('/api/payments/verify', {
             ...response,
-            orderId
+            order_id: orderId
           });
           toast.success("Payment successful!");
           clearLocalCart();
