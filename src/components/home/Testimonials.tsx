@@ -1,26 +1,31 @@
 import { motion } from 'framer-motion';
 import { Star, Quote } from 'lucide-react';
 
-const testimonials = [
+interface Testimonial {
+  name: string;
+  role: string;
+  avatar?: string;
+  content: string;
+  rating: number;
+}
+
+const testimonials: Testimonial[] = [
   {
-    name: 'Alex Chen',
-    role: 'Product Designer',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    content: 'The quality of prints from PrintForge is exceptional. The detail on my miniatures is better than anything I could achieve at home.',
+    name: 'Twinkle',
+    role: 'Verified Customer',
+    content: 'I had a very good and smooth experience with placing an order and getting it customised. It was a gift and I was very particular about how I wanted it, thank you for taking everything into consideration and making it happen so quickly! Within 3 days I had the order in my hand. Will definitely love to engage with more of your products. The quality is also very good and economical.',
     rating: 5,
   },
   {
-    name: 'Sarah Williams',
-    role: 'Mechanical Engineer',
-    avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-    content: 'Fast turnaround, excellent communication, and the PETG parts I ordered exceeded my expectations for strength and precision.',
+    name: 'karmesh',
+    role: 'Verified Customer',
+    content: "Didn't expect 30 printed parts to look this clean. The finish is smooth, the edges are sharp, and the whole thing just feels solid-not that cheap, flimsy type at all. The red and black combo looks sick in real life, proper standout piece. Lowkey impressed. Wouldn't mind getting more stuff like this.",
     rating: 5,
   },
   {
-    name: 'Michael Park',
-    role: 'Startup Founder',
-    avatar: 'https://randomuser.me/api/portraits/men/67.jpg',
-    content: 'We prototyped our entire product line through PrintForge. The custom print feature made iteration incredibly fast.',
+    name: 'Neha rai',
+    role: 'Verified Customer',
+    content: 'Got these beautiful custom-made coasters from Printforge',
     rating: 5,
   },
 ];
@@ -80,11 +85,17 @@ export default function Testimonials() {
 
               {/* Author */}
               <div className="flex items-center gap-4">
-                <img
-                  src={testimonial.avatar}
-                  alt={testimonial.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-border"
-                />
+                {testimonial.avatar ? (
+                  <img
+                    src={testimonial.avatar}
+                    alt={testimonial.name}
+                    className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-border flex items-center justify-center text-primary font-semibold">
+                    {testimonial.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <h4 className="font-semibold text-foreground">
                     {testimonial.name}
