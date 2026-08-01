@@ -122,7 +122,7 @@ export default function Products() {
               <div>
                 <h4 className="font-bold text-sm uppercase tracking-wider mb-4">Categories</h4>
                 <div className="space-y-1">
-                  {['All', 'Decorative', 'Functional', 'Miniatures', 'Jewelry'].map((cat) => (
+                  {['All', 'Controller Stands', 'Game Storage', 'Gaming Decor', 'VR Accessories'].map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
